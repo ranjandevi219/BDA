@@ -1,0 +1,39 @@
+// Function to lemmatize or modify a word
+def lemmatize(word: String): String = {
+  val matchList = List("running") // sample word to match
+  matchList match {
+    case l if l.contains(word) => word.dropRight(3) + "e" // rudimentary lemmatization
+    case _ => word
+  }
+}
+
+// Function to clean a line of text
+def clean_text(line: String): String = {
+  line.toLowerCase
+    .replaceAll("[^a-z\\s]", "") // keep only a-z and whitespace
+    .split("\\s+")
+    .map(lemmatize) // apply lemmatizer
+    .mkString(" ") // rejoin words
+}
+
+// Read streaming data from socket
+val lines = spark.readStream
+  .format("socket")
+  .option("host", "localhost")
+  .option("port", 9999)
+  .load()
+
+// Apply text cleaning
+import org.apache.spark.sql.functions.udf
+
+val cleanUDF = udf(clean_text _)
+
+val cleaned = lines.withColumn("cleaned", cleanUDF(lines("value")))
+
+// Start streaming query to print to console
+val query = cleaned.select("cleaned").writeStream
+  .outputMode("append")
+  .format("console")
+  .start()
+
+query.awaitTermination()
